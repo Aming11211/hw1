@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>俄羅斯方塊</title>
+<style>
+body{font-family:Arial,sans-serif;background:#111;color:#fff;text-align:center}
+canvas{border:2px solid #fff;background:#000}
+.wrap{display:flex;justify-content:center;gap:20px;align-items:flex-start;margin-top:20px}
+button{padding:8px 16px}
+</style>
+</head>
+<body>
+<h1>俄羅斯方塊</h1>
+<p>← → 移動｜↑ 旋轉｜↓ 加速｜空白鍵瞬降</p>
+<button onclick="startAudio()">啟用音效</button>
+<div class="wrap">
+<canvas id="game" width="300" height="600"></canvas>
+<div>
+<h3>分數</h3>
+<div id="score">0</div>
+</div>
+</div>
+
+<script>
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+ctx.scale(30,30);
+
+const arena=Array.from({length:20},()=>Array(10).fill(0));
+const colors=[null,'#0ff','#ff0','#f0f','#0f0','#f00','#00f','#fa0'];
+
+let audioCtx=null;
+function startAudio(){
+  if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+}
+function beep(freq,dur){
+  if(!audioCtx) return;
+  const osc=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.frequency.value=freq;
+  osc.start();
+  gain.gain.setValueAtTime(0.05,audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur);
+  osc.stop(audioCtx.currentTime+dur);
+}
+
+function createPiece(type){
+ const pieces={
+ T:[[0,0,0],[1,1,1],[0,1,0]],
+ O:[[2,2],[2,2]],
+ L:[[0,3,0],[0,3,0],[0,3,3]],
+ J:[[0,4,0],[0,4,0],[4,4,0]],
+ I:[[0,5,0,0],[0,5,0,0],[0,5,0,0],[0,5,0,0]],
+ S:[[0,6,6],[6,6,0],[0,0,0]],
+ Z:[[7,7,0],[0,7,7],[0,0,0]]
+ };
+ return pieces[type];
+}
+
+function collide(arena,player){
+ const [m,o]=[player.matrix,player.pos];
+ for(let y=0;y<m.length;y++){
+  for(let x=0;x<m[y].length;x++){
+   if(m[y][x]&&(arena[y+o.y]&&arena[y+o.y][x+o.x])!==0) return true;
+  }
+ }
+ return false;
+}
+
+function merge(arena,player){
+ player.matrix.forEach((row,y)=>{
+  row.forEach((v,x)=>{ if(v) arena[y+player.pos.y][x+player.pos.x]=v; });
+ });
+}
+
+function rotate(matrix){
+ for(let y=0;y<matrix.length;y++)
+  for(let x=0;x<y;x++)
+   [matrix[x][y],matrix[y][x]]=[matrix[y][x],matrix[x][y]];
+ matrix.forEach(r=>r.reverse());
+}
+
+function arenaSweep(){
+ let lines=0;
+ outer: for(let y=arena.length-1;y>=0;y--){
+  for(let x=0;x<arena[y].length;x++) if(arena[y][x]===0) continue outer;
+  arena.splice(y,1);
+  arena.unshift(Array(10).fill(0));
+  y++;
+  lines++;
+ }
+ if(lines){
+   player.score+=lines*100;
+   document.getElementById('score').textContent=player.score;
+   beep(880,0.15);
+ }
+}
+
+const player={pos:{x:0,y:0},matrix:null,score:0};
+
+function resetPlayer(){
+ const pieces='TJLOSZI';
+ player.matrix=createPiece(pieces[Math.random()*pieces.length|0]);
+ player.pos.y=0;
+ player.pos.x=(10/2|0)-(player.matrix[0].length/2|0);
+ if(collide(arena,player)){
+   arena.forEach(r=>r.fill(0));
+   player.score=0;
+   document.getElementById('score').textContent=0;
+ }
+}
+
+function drawMatrix(matrix,offset){
+ matrix.forEach((row,y)=>row.forEach((v,x)=>{
+  if(v){ctx.fillStyle=colors[v];ctx.fillRect(x+offset.x,y+offset.y,1,1);}
+ }));
+}
+
+function draw(){
+ ctx.fillStyle='#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
+ drawMatrix(arena,{x:0,y:0});
+ drawMatrix(player.matrix,player.pos);
+}
+
+function drop(){
+ player.pos.y++;
+ if(collide(arena,player)){
+  player.pos.y--;
+  merge(arena,player);
+  arenaSweep();
+  resetPlayer();
+  beep(220,0.08);
+ }
+ dropCounter=0;
+}
+
+function move(dir){
+ player.pos.x+=dir;
+ if(collide(arena,player)) player.pos.x-=dir;
+}
+
+document.addEventListener('keydown',e=>{
+ if(e.key==='ArrowLeft') move(-1);
+ else if(e.key==='ArrowRight') move(1);
+ else if(e.key==='ArrowDown') drop();
+ else if(e.key==='ArrowUp'){ rotate(player.matrix); beep(660,0.05); }
+ else if(e.code==='Space'){
+   while(!collide(arena,player)) player.pos.y++;
+   player.pos.y--; drop();
+ }
+});
+
+let dropCounter=0,last=0;
+function update(t=0){
+ dropCounter+=t-last; last=t;
+ if(dropCounter>700) drop();
+ draw();
+ requestAnimationFrame(update);
+}
+
+resetPlayer();
+update();
+</script>
+</body>
+</html>
